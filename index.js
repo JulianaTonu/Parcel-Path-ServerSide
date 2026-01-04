@@ -42,6 +42,33 @@ async function run() {
         res.status(500).send({ message: "Insert failed" });
       }
     });
+
+    // Parcel api
+    ///Get: all parcel or parcels by user(created_by),sorted by latest
+    app.get("/parcels", async (req, res) => {
+      try {
+        const { email } = req.query;
+
+        let query = {};
+
+        // If email is provided → get user parcels
+        if (email) {
+          query.created_by = email;
+        }
+
+        const parcels = await parcelsCollection
+          .find(query)
+          .sort({ creation_date: -1 }) // latest first
+          .toArray();
+
+        res.send(parcels);
+      } catch (error) {
+        console.error("Error fetching parcels:", error);
+        res.status(500).send({ message: "Failed to fetch parcels" });
+      }
+    });
+
+
   } catch (err) {
     console.error(err);
   }
