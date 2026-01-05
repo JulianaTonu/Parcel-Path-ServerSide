@@ -1,5 +1,5 @@
 const express = require("express");
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion,ObjectId } = require("mongodb");
 const cors = require("cors");
 require("dotenv").config();
 
@@ -65,6 +65,24 @@ async function run() {
       } catch (error) {
         console.error("Error fetching parcels:", error);
         res.status(500).send({ message: "Failed to fetch parcels" });
+      }
+    });
+
+    // DELETE parcel by id
+    app.delete("/parcels/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const result = await parcelsCollection.deleteOne({
+          _id: new ObjectId(id),
+        });
+
+        res.send({
+          success: result.deletedCount > 0,
+          deletedCount: result.deletedCount,
+        });
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ success: false });
       }
     });
 
