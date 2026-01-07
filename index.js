@@ -68,6 +68,40 @@ async function run() {
       }
     });
 
+//GET :get a specific parcel by ID
+app.get("/parcels/:id", async (req, res) => {
+  const id = req.params.id;
+
+  // validate ObjectId
+  if (!ObjectId.isValid(id)) {
+    return res.status(400).send({ message: "Invalid parcel ID" });
+  }
+
+  try {
+    const query = { _id: new ObjectId(id) };
+    const parcel = await parcelsCollection.findOne(query);
+
+    if (!parcel) {
+      return res.status(404).send({ message: "Parcel not found" });
+    }
+    res.send(parcel);
+    
+  } catch (error) {
+    res.status(500).send({ message: "Server error" });
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
+
     // DELETE parcel by id
     app.delete("/parcels/:id", async (req, res) => {
       try {
