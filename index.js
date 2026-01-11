@@ -33,6 +33,8 @@ async function run() {
 
     const database = client.db(process.env.DB_NAME);
     const parcelsCollection = database.collection("parcels");
+    const paymentsCollection = database.collection("payments");
+
 
     app.post("/parcels", async (req, res) => {
       try {
@@ -81,7 +83,7 @@ async function run() {
       try {
         const query = { _id: new ObjectId(id) };
         const parcel = await parcelsCollection.findOne(query);
-        const payments = await paymentsCollection.findOne(query);
+       
 
 
         if (!parcel) {
@@ -127,7 +129,47 @@ async function run() {
       }
     });
 
-   
+    //PayMent
+    app.post("/payments", async (req, res) => {
+      try {
+        const { parcelId, email, amount, transactionId } = req.body;
+
+        // 1️⃣ Save payment history
+        const payment = {
+          parcelId: new ObjectId(parcelId),
+          email,
+          amount,
+          transactionId,
+          status: "succeeded",
+          createdAt: new Date(),
+        };
+
+        const paymentResult = await paymentsCollection.insertOne(payment);
+
+        // 2️⃣ Mark parcel as paid
+        const parcelUpdate = await parcelsCollection.updateOne(
+          { _id: new ObjectId(parcelId) },
+          {
+            $set: {
+              paid: true,
+              transactionId,
+            },
+          }
+        );
+
+        res.send({
+          success: true,
+          paymentId: paymentResult.insertedId,
+          parcelUpdated: parcelUpdate.modifiedCount > 0,
+        });
+
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Payment save failed" });
+      }
+    });
+
+
 
 
 
