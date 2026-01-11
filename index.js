@@ -1,11 +1,12 @@
 const express = require("express");
-const { MongoClient, ServerApiVersion,ObjectId } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const cors = require("cors");
 require("dotenv").config();
 
 const app = express();
 const port = process.env.PORT || 5000;
-
+const stripe = require('stripe')(process.env.PAYMENT_GATEWAY_KEY);
+console.log('PAYMENT_GATEWAY_KEY', process.env.PAYMENT_GATEWAY_KEY)
 // ✅ CORS (Express 5 compatible)
 app.use(cors({
   origin: "http://localhost:5173",
@@ -68,39 +69,30 @@ async function run() {
       }
     });
 
-//GET :get a specific parcel by ID
-app.get("/parcels/:id", async (req, res) => {
-  const id = req.params.id;
+    //GET :get a specific parcel by ID
+    app.get("/parcels/:id", async (req, res) => {
+      const id = req.params.id;
 
-  // validate ObjectId
-  if (!ObjectId.isValid(id)) {
-    return res.status(400).send({ message: "Invalid parcel ID" });
-  }
+      // validate ObjectId
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).send({ message: "Invalid parcel ID" });
+      }
 
-  try {
-    const query = { _id: new ObjectId(id) };
-    const parcel = await parcelsCollection.findOne(query);
-
-    if (!parcel) {
-      return res.status(404).send({ message: "Parcel not found" });
-    }
-    res.send(parcel);
-    
-  } catch (error) {
-    res.status(500).send({ message: "Server error" });
-  }
-});
+      try {
+        const query = { _id: new ObjectId(id) };
+        const parcel = await parcelsCollection.findOne(query);
+        const payments = await paymentsCollection.findOne(query);
 
 
+        if (!parcel) {
+          return res.status(404).send({ message: "Parcel not found" });
+        }
+        res.send(parcel);
 
-
-
-
-
-
-
-
-
+      } catch (error) {
+        res.status(500).send({ message: "Server error" });
+      }
+    });
 
     // DELETE parcel by id
     app.delete("/parcels/:id", async (req, res) => {
@@ -119,6 +111,24 @@ app.get("/parcels/:id", async (req, res) => {
         res.status(500).send({ success: false });
       }
     });
+
+    //payment-intent
+    app.post('/create-payment-intent', async (req, res) => {
+      try {
+        const { amount } = req.body; // get amount from request
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount, // amount in cents
+          currency: 'usd',
+          payment_method_types: ['card'],
+        });
+        res.json({ clientSecret: paymentIntent.client_secret });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+   
+
 
 
   } catch (err) {
