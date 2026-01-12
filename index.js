@@ -129,6 +129,33 @@ async function run() {
       }
     });
 
+                  //>>>>>>>PayMent.<<<<<<<
+
+// GET: payment history (by user or all for admin)
+app.get("/payments", async (req, res) => {
+  try {
+    const { email } = req.query;
+
+    let query = {};
+
+    // If email is provided → get payments by user
+    if (email) {
+      query.email = email;
+    }
+
+    const payments = await paymentsCollection
+      .find(query)
+      .sort({ createdAt: -1 }) // ✅ latest first
+      .toArray();
+
+    res.send(payments);
+  } catch (error) {
+    console.error("Error fetching payments:", error);
+    res.status(500).send({ message: "Failed to fetch payment history" });
+  }
+});
+
+
     //PayMent
     app.post("/payments", async (req, res) => {
       try {
@@ -141,6 +168,7 @@ async function run() {
           amount,
           transactionId,
           status: "succeeded",
+          created_at_string:new Date().toISOString(),
           createdAt: new Date(),
         };
 
@@ -151,8 +179,7 @@ async function run() {
           { _id: new ObjectId(parcelId) },
           {
             $set: {
-              paid: true,
-              transactionId,
+              payment_status: 'paid',
             },
           }
         );
@@ -167,8 +194,8 @@ async function run() {
         console.error(error);
         res.status(500).send({ message: "Payment save failed" });
       }
-    });
 
+    });
 
 
 
