@@ -162,7 +162,26 @@ async function run() {
     });
 
 
- 
+    // GET tracking history by trackingId
+    app.get('/tracking/:trackingId', async (req, res) => {
+      try {
+        const { trackingId } = req.params;
+
+        const trackingHistory = await trackingCollection
+          .find({ trackingId })
+          .sort({ createdAt: 1 }) // oldest → latest (timeline)
+          .toArray();
+
+        if (trackingHistory.length === 0) {
+          return res.status(404).send([]);
+        }
+
+        res.send(trackingHistory);
+      } catch (error) {
+        console.error('Tracking fetch error:', error);
+        res.status(500).send({ message: 'Failed to fetch tracking data' });
+      }
+    });
 
 
 
