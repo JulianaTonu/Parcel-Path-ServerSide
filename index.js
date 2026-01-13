@@ -6,7 +6,7 @@ require("dotenv").config();
 const app = express();
 const port = process.env.PORT || 5000;
 const stripe = require('stripe')(process.env.PAYMENT_GATEWAY_KEY);
-console.log('PAYMENT_GATEWAY_KEY', process.env.PAYMENT_GATEWAY_KEY)
+
 // ✅ CORS (Express 5 compatible)
 app.use(cors({
   origin: "http://localhost:5173",
@@ -34,17 +34,64 @@ async function run() {
     const database = client.db(process.env.DB_NAME);
     const parcelsCollection = database.collection("parcels");
     const paymentsCollection = database.collection("payments");
+    const trackingCollection = database.collection("tracking");
 
 
+    // app.post("/parcels", async (req, res) => {
+    //   try {
+    //     const result = await parcelsCollection.insertOne(req.body);
+    //     res.send({ success: true, insertedId: result.insertedId });
+    //   } catch (err) {
+    //     console.error(err);
+    //     res.status(500).send({ message: "Insert failed" });
+    //   }
+    // });
+
+
+    // PARCEL CREATE (EMAIL SAFE + AUTO TRACKING)
+    // ====================================================== */
     app.post("/parcels", async (req, res) => {
       try {
-        const result = await parcelsCollection.insertOne(req.body);
-        res.send({ success: true, insertedId: result.insertedId });
-      } catch (err) {
-        console.error(err);
-        res.status(500).send({ message: "Insert failed" });
+        const parcel = {
+          ...req.body,
+          payment_status: "unpaid",
+          creation_date: new Date(),
+        };
+
+        const parcelResult = await parcelsCollection.insertOne(parcel);
+
+        // 🔥 AUTO TRACKING CREATE
+        const tracking = {
+          parcelId: parcelResult.insertedId,
+          trackingId: `TRK-${Date.now()}`,
+          status: "Parcel Created",
+          location: "Warehouse",
+          message: "Parcel has been registered",
+          createdAt: new Date(),
+        };
+
+        await trackingCollection.insertOne(tracking);
+
+        res.send({
+          success: true,
+          parcelId: parcelResult.insertedId,
+          trackingId: tracking.trackingId,
+        });
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Parcel creation failed" });
       }
     });
+
+
+
+
+
+
+
+
+
+
 
     // Parcel api
     ///Get: all parcel or parcels by user(created_by),sorted by latest
@@ -83,7 +130,7 @@ async function run() {
       try {
         const query = { _id: new ObjectId(id) };
         const parcel = await parcelsCollection.findOne(query);
-       
+
 
 
         if (!parcel) {
@@ -114,6 +161,11 @@ async function run() {
       }
     });
 
+
+ 
+
+
+
     //payment-intent
     app.post('/create-payment-intent', async (req, res) => {
       try {
@@ -129,31 +181,31 @@ async function run() {
       }
     });
 
-                  //>>>>>>>PayMent.<<<<<<<
+    //>>>>>>>PayMent.<<<<<<<
 
-// GET: payment history (by user or all for admin)
-app.get("/payments", async (req, res) => {
-  try {
-    const { email } = req.query;
+    // GET: payment history (by user or all for admin)
+    app.get("/payments", async (req, res) => {
+      try {
+        const { email } = req.query;
 
-    let query = {};
+        let query = {};
 
-    // If email is provided → get payments by user
-    if (email) {
-      query.email = email;
-    }
+        // If email is provided → get payments by user
+        if (email) {
+          query.email = email;
+        }
 
-    const payments = await paymentsCollection
-      .find(query)
-      .sort({ createdAt: -1 }) // ✅ latest first
-      .toArray();
+        const payments = await paymentsCollection
+          .find(query)
+          .sort({ createdAt: -1 }) // ✅ latest first
+          .toArray();
 
-    res.send(payments);
-  } catch (error) {
-    console.error("Error fetching payments:", error);
-    res.status(500).send({ message: "Failed to fetch payment history" });
-  }
-});
+        res.send(payments);
+      } catch (error) {
+        console.error("Error fetching payments:", error);
+        res.status(500).send({ message: "Failed to fetch payment history" });
+      }
+    });
 
 
     //PayMent
@@ -168,7 +220,7 @@ app.get("/payments", async (req, res) => {
           amount,
           transactionId,
           status: "succeeded",
-          created_at_string:new Date().toISOString(),
+          created_at_string: new Date().toISOString(),
           createdAt: new Date(),
         };
 
