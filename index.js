@@ -183,6 +183,19 @@ async function run() {
       }
     });
 
+// Tracking ID diye parcel pabar jonne:
+    app.get("/parcels/by-tracking/:trackingId", async (req, res) => {
+  const { trackingId } = req.params;
+
+  const tracking = await trackingCollection.findOne({ trackingId });
+  if (!tracking) return res.status(404).send({});
+
+  const parcel = await parcelsCollection.findOne({
+    _id: tracking.parcelId,
+  });
+
+  res.send(parcel);
+});
 
 
     //payment-intent
