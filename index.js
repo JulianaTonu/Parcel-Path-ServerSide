@@ -36,17 +36,7 @@ async function run() {
     const paymentsCollection = database.collection("payments");
     const trackingCollection = database.collection("tracking");
 
-
-    // app.post("/parcels", async (req, res) => {
-    //   try {
-    //     const result = await parcelsCollection.insertOne(req.body);
-    //     res.send({ success: true, insertedId: result.insertedId });
-    //   } catch (err) {
-    //     console.error(err);
-    //     res.status(500).send({ message: "Insert failed" });
-    //   }
-    // });
-
+    const usersCollection = database.collection("users");
 
     // PARCEL CREATE (EMAIL SAFE + AUTO TRACKING)
     // ====================================================== */
@@ -60,7 +50,7 @@ async function run() {
 
         const parcelResult = await parcelsCollection.insertOne(parcel);
 
-        // 🔥 AUTO TRACKING CREATE
+        //  AUTO TRACKING CREATE
         const tracking = {
           parcelId: parcelResult.insertedId,
           trackingId: `TRK-${Date.now()}`,
@@ -82,15 +72,6 @@ async function run() {
         res.status(500).send({ message: "Parcel creation failed" });
       }
     });
-
-
-
-
-
-
-
-
-
 
 
     // Parcel api
@@ -183,20 +164,37 @@ async function run() {
       }
     });
 
-// Tracking ID diye parcel pabar jonne:
+    // Tracking ID diye parcel pabar jonne:
     app.get("/parcels/by-tracking/:trackingId", async (req, res) => {
-  const { trackingId } = req.params;
+      const { trackingId } = req.params;
 
-  const tracking = await trackingCollection.findOne({ trackingId });
-  if (!tracking) return res.status(404).send({});
+      const tracking = await trackingCollection.findOne({ trackingId });
+      if (!tracking) return res.status(404).send({});
 
-  const parcel = await parcelsCollection.findOne({
-    _id: tracking.parcelId,
-  });
+      const parcel = await parcelsCollection.findOne({
+        _id: tracking.parcelId,
+      });
 
-  res.send(parcel);
-});
+      res.send(parcel);
+    });
 
+    app.post('/tracking/update', async (req, res) => {
+      try {
+        const update = {
+          parcelId: new ObjectId(req.body.parcelId),
+          trackingId: req.body.trackingId,
+          status: req.body.status,
+          location: req.body.location,
+          message: req.body.message,
+          createdAt: new Date()
+        };
+
+        const result = await trackingCollection.insertOne(update);
+        res.send({ success: true });
+      } catch (error) {
+        res.status(500).send({ message: 'Tracking update failed' });
+      }
+    });
 
     //payment-intent
     app.post('/create-payment-intent', async (req, res) => {
