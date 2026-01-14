@@ -38,6 +38,16 @@ async function run() {
 
     const usersCollection = database.collection("users");
 
+    app.post("/users", async (req, res) => {
+      try {
+        const user = req.body;
+        const result = await usersCollection.insertOne(user);
+        res.send({ success: true, insertedId: result.insertedId });
+      } catch (error) {
+        res.status(500).send({ message: "User save failed" });
+      }
+    });
+
     // PARCEL CREATE (EMAIL SAFE + AUTO TRACKING)
     // ====================================================== */
     app.post("/parcels", async (req, res) => {
