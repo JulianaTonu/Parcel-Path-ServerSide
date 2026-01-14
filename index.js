@@ -48,6 +48,52 @@ async function run() {
       }
     });
 
+    // Social login: first-time or returning user
+    app.post("/users/social-login", async (req, res) => {
+      try {
+        const { name, email, uid, photoURL } = req.body;
+
+        if (!email || !uid) {
+          return res.status(400).send({ message: "Email and UID are required" });
+        }
+
+        // Check if user already exists (by email or UID)
+        let user = await usersCollection.findOne({
+          $or: [{ email }, { uid }],
+        });
+
+        if (!user) {
+          // First-time login → create new user
+          const newUser = {
+            name,
+            email,
+            uid,
+            photoURL,
+            role: "user", // default role
+            createdAt: new Date(),
+            lastLogin: new Date(),
+          };
+
+          const result = await usersCollection.insertOne(newUser);
+          user = { ...newUser, _id: result.insertedId };
+          console.log("New social user created:", user);
+        } else {
+          // Returning user → update last login
+          await usersCollection.updateOne(
+            { _id: user._id },
+            { $set: { lastLogin: new Date() } }
+          );
+          console.log("Returning social user:", user);
+        }
+
+        res.send(user);
+      } catch (error) {
+        console.error("Social login error:", error);
+        res.status(500).send({ message: "Social login failed" });
+      }
+    });
+
+
     // PARCEL CREATE (EMAIL SAFE + AUTO TRACKING)
     // ====================================================== */
     app.post("/parcels", async (req, res) => {
