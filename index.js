@@ -2,6 +2,7 @@ const express = require("express");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const cors = require("cors");
 require("dotenv").config();
+const admin = require("firebase-admin");
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -15,6 +16,12 @@ app.use(cors({
 }));
 
 app.use(express.json());
+const serviceAccount = require("./firebase-admin-key.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.clv6xgk.mongodb.net/${process.env.DB_NAME}?appName=Cluster0`;
 
@@ -35,8 +42,33 @@ async function run() {
     const parcelsCollection = database.collection("parcels");
     const paymentsCollection = database.collection("payments");
     const trackingCollection = database.collection("tracking");
-
     const usersCollection = database.collection("users");
+
+//custom middlewares
+const verifyFBToken =async(req,res,next)=>{
+  console.log('header in middleware', req.headers)
+  const authHeader = req.headers.authorization;
+  if(!authHeader){
+    return res.status(401).send({message:'unauthorized access'})
+  }
+  const token = authHeader.split(' ')[1]
+  if(!token){
+    return res.status(401).send({message:'unauthorized access'})
+  }
+
+
+  // verify the token 
+try {
+  const decoded =await admin.auth().verifyIdToken(token);
+  req.decoded =decoded;
+    next();
+
+} catch (error) {
+  return res.status(403).send({message: 'forbidden access'})
+}
+
+}
+
 
     app.post("/users", async (req, res) => {
       try {
@@ -270,9 +302,13 @@ async function run() {
     //>>>>>>>PayMent.<<<<<<<
 
     // GET: payment history (by user or all for admin)
-    app.get("/payments", async (req, res) => {
+    app.get("/payments",verifyFBToken, async (req, res) => {
       try {
         const { email } = req.query;
+        console.log('decoded',req.decoded)
+        if(req.decoded.email !== email){
+          return res.status(403).send({message:'forbidden access'})
+        }
 
         let query = {};
 
