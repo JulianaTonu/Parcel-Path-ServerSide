@@ -43,31 +43,32 @@ async function run() {
     const paymentsCollection = database.collection("payments");
     const trackingCollection = database.collection("tracking");
     const usersCollection = database.collection("users");
+    const ridersCollection = database.collection("riders");
 
-//custom middlewares
-const verifyFBToken =async(req,res,next)=>{
-  console.log('header in middleware', req.headers)
-  const authHeader = req.headers.authorization;
-  if(!authHeader){
-    return res.status(401).send({message:'unauthorized access'})
-  }
-  const token = authHeader.split(' ')[1]
-  if(!token){
-    return res.status(401).send({message:'unauthorized access'})
-  }
+    //custom middlewares
+    const verifyFBToken = async (req, res, next) => {
+      console.log('header in middleware', req.headers)
+      const authHeader = req.headers.authorization;
+      if (!authHeader) {
+        return res.status(401).send({ message: 'unauthorized access' })
+      }
+      const token = authHeader.split(' ')[1]
+      if (!token) {
+        return res.status(401).send({ message: 'unauthorized access' })
+      }
 
 
-  // verify the token 
-try {
-  const decoded =await admin.auth().verifyIdToken(token);
-  req.decoded =decoded;
-    next();
+      // verify the token 
+      try {
+        const decoded = await admin.auth().verifyIdToken(token);
+        req.decoded = decoded;
+        next();
 
-} catch (error) {
-  return res.status(403).send({message: 'forbidden access'})
-}
+      } catch (error) {
+        return res.status(403).send({ message: 'forbidden access' })
+      }
 
-}
+    }
 
 
     app.post("/users", async (req, res) => {
@@ -231,6 +232,13 @@ try {
     });
 
 
+    //Create Rider 
+    app.post('/riders', async (req, res) => {
+      const rider = req.body;
+      const result = await ridersCollection.insertOne(rider);
+      res.send(result)
+    })
+
     // GET tracking history by trackingId
     app.get('/tracking/:trackingId', async (req, res) => {
       try {
@@ -302,12 +310,12 @@ try {
     //>>>>>>>PayMent.<<<<<<<
 
     // GET: payment history (by user or all for admin)
-    app.get("/payments",verifyFBToken, async (req, res) => {
+    app.get("/payments", verifyFBToken, async (req, res) => {
       try {
         const { email } = req.query;
-        console.log('decoded',req.decoded)
-        if(req.decoded.email !== email){
-          return res.status(403).send({message:'forbidden access'})
+        console.log('decoded', req.decoded)
+        if (req.decoded.email !== email) {
+          return res.status(403).send({ message: 'forbidden access' })
         }
 
         let query = {};
