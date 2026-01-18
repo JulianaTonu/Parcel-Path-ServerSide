@@ -11,7 +11,7 @@ const stripe = require('stripe')(process.env.PAYMENT_GATEWAY_KEY);
 // ✅ CORS (Express 5 compatible)
 app.use(cors({
   origin: "http://localhost:5173",
-  methods: ["GET", "POST", "PUT", "DELETE"],
+  methods: ["GET", "POST", "PUT", "DELETE",],
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
 
@@ -231,7 +231,15 @@ async function run() {
       }
     });
 
+    // GET pending riders
+    app.get('/riders',  async (req, res) => {
+      const status = req.query.status;
+      const query = status ? { status } : {};
+      const riders = await ridersCollection.find(query).toArray();
+      res.send(riders);
+    });
 
+   
     //Create Rider 
     app.post('/riders', async (req, res) => {
       const rider = req.body;
