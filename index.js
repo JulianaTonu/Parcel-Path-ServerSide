@@ -11,7 +11,7 @@ const stripe = require('stripe')(process.env.PAYMENT_GATEWAY_KEY);
 // ✅ CORS (Express 5 compatible)
 app.use(cors({
   origin: "http://localhost:5173",
-  methods: ["GET", "POST", "PUT", "DELETE",],
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
 
@@ -239,7 +239,17 @@ async function run() {
       res.send(riders);
     });
 
-   
+    // Update rider status
+    app.patch('/riders/:id',  async (req, res) => {
+       console.log("PATCH hit", req.params.id, req.body);
+      const { status } = req.body;
+      const result = await ridersCollection.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        { $set: { status } }
+      );
+      res.send(result);
+    });
+
     //Create Rider 
     app.post('/riders', async (req, res) => {
       const rider = req.body;
