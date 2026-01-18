@@ -235,9 +235,25 @@ async function run() {
     //Create Rider 
     app.post('/riders', async (req, res) => {
       const rider = req.body;
-      const result = await ridersCollection.insertOne(rider);
-      res.send(result)
-    })
+
+      if (!rider.email) {
+        return res.status(400).send({ message: 'Email required' });
+      }
+
+      const exists = await ridersCollection.findOne({ email: rider.email });
+      if (exists) {
+        return res.status(409).send({ message: 'Already applied' });
+      }
+
+      const result = await ridersCollection.insertOne({
+        ...rider,
+        status: 'pending',
+        created_at: new Date()
+      });
+
+      res.send({ insertedId: result.insertedId });
+    });
+
 
     // GET tracking history by trackingId
     app.get('/tracking/:trackingId', async (req, res) => {
