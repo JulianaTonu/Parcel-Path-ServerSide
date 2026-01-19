@@ -87,6 +87,22 @@ async function run() {
     });
 
 
+    // Update user role
+    app.patch('/users/role/:id', async (req, res) => {
+      const { role } = req.body;
+
+      if (!['admin', 'user'].includes(role)) {
+        return res.status(400).send({ message: 'Invalid role' });
+      }
+
+      const result = await usersCollection.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        { $set: { role } }
+      );
+
+      res.send(result);
+    });
+
 
     app.post("/users", async (req, res) => {
       try {
