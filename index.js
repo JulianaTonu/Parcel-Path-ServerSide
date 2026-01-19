@@ -70,6 +70,23 @@ async function run() {
 
     }
 
+    // 🔍 Search users by email (partial match)
+    app.get("/users/search", async (req, res) => {
+      const { q } = req.query;
+
+      if (!q) return res.send([]);
+
+      const users = await usersCollection
+        .find({
+          email: { $regex: q, $options: "i" } // case-insensitive partial match
+        })
+        .limit(5) // optional: limit results
+        .toArray();
+
+      res.send(users);
+    });
+
+
 
     app.post("/users", async (req, res) => {
       try {
@@ -232,7 +249,7 @@ async function run() {
     });
 
     // GET pending riders
-    app.get('/riders',  async (req, res) => {
+    app.get('/riders', async (req, res) => {
       const status = req.query.status;
       const query = status ? { status } : {};
       const riders = await ridersCollection.find(query).toArray();
@@ -240,8 +257,8 @@ async function run() {
     });
 
     // Update rider status
-    app.patch('/riders/:id',  async (req, res) => {
-       console.log("PATCH hit", req.params.id, req.body);
+    app.patch('/riders/:id', async (req, res) => {
+      console.log("PATCH hit", req.params.id, req.body);
       const { status } = req.body;
       const result = await ridersCollection.updateOne(
         { _id: new ObjectId(req.params.id) },
