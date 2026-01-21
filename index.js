@@ -459,6 +459,86 @@ async function run() {
       }
     );
 
+    // ===== RIDER DELIVER PARCEL =====
+    app.patch(
+      "/parcels/:id/deliver",
+      verifyFBToken,
+      verifyRider,
+      async (req, res) => {
+        try {
+          const parcelId = req.params.id;
+
+          // 1️⃣ Find parcel
+          const parcel = await parcelsCollection.findOne({
+            _id: new ObjectId(parcelId),
+          });
+
+          if (!parcel) {
+            return res.status(404).send({ message: "Parcel not found" });
+          }
+
+          // 2️⃣ Security check (rider owns this parcel)
+          if (parcel.riderEmail !== req.decoded.email) {
+            return res.status(403).send({ message: "Forbidden access" });
+          }
+
+          // 3️⃣ Prepare update object
+          const updateDoc = {
+            delivery_status: "Delivered",
+            deliveredAt: new Date(),
+          };
+
+          // 🔥 KEY PART: unpaid → paid
+          if (parcel.payment_status === "unpaid") {
+            updateDoc.payment_status = "paid";
+          }
+
+          // 4️⃣ Update parcel
+          const result = await parcelsCollection.updateOne(
+            { _id: new ObjectId(parcelId) },
+            { $set: updateDoc }
+          );
+
+          // 5️⃣ Tracking history
+          await trackingCollection.insertOne({
+            trackingId: parcel.trackingId,
+            status: "Delivered",
+            message:
+              parcel.payment_status === "unpaid"
+                ? "Parcel delivered and payment collected"
+                : "Parcel delivered successfully",
+            location: parcel.receiver_district || "Destination",
+            createdAt: new Date(),
+          });
+
+          res.send(result);
+        } catch (error) {
+          console.error(error);
+          res.status(500).send({ message: "Delivery update failed" });
+        }
+      }
+    );
+
+
+    //=== GET PARCEL BY Tracking ID ===
+
+    app.get("/parcels/by-tracking/:trackingId", async (req, res) => {
+      try {
+        const trackingId = req.params.trackingId.trim();
+
+        const parcel = await parcelsCollection.findOne({ trackingId });
+
+        if (!parcel) {
+          return res.status(404).send({ message: "Parcel not found" });
+        }
+
+        res.send(parcel);
+      } catch (error) {
+        console.error("Error fetching parcel by trackingId:", error);
+        res.status(500).send({ message: "Server error" });
+      }
+    });
+
 
     // GET tracking history by trackingId
     app.get('/tracking/:trackingId', async (req, res) => {
