@@ -377,7 +377,69 @@ async function run() {
     });
 
 
-  
+    // ======== ASSIGN RIDER =====
+    app.put("/parcels/:id/assign-rider", async (req, res) => {
+      try {
+        const parcelId = req.params.id;
+        const { rider } = req.body;
+
+        if (!rider) {
+          return res.status(400).json({ message: "Rider name is required" });
+        }
+
+        // 1️⃣ Find parcel
+        const parcel = await parcelsCollection.findOne({
+          _id: new ObjectId(parcelId),
+        });
+
+        if (!parcel) {
+          return res.status(404).json({ message: "Parcel not found" });
+        }
+
+        // 2️⃣ Find rider
+        const riderData = await ridersCollection.findOne({ name: rider });
+
+        if (!riderData) {
+          return res.status(404).json({ message: "Rider not found" });
+        }
+
+        // 3️⃣ Update parcel
+        await parcelsCollection.updateOne(
+          { _id: new ObjectId(parcelId) },
+          {
+            $set: {
+              rider: riderData.name,
+              riderEmail: riderData.email,
+              riderPhone: riderData.contact,
+              delivery_status: "In Transit",
+              assignedAt: new Date(),
+            },
+          }
+        );
+
+        // 4️⃣ Update rider work status
+        await ridersCollection.updateOne(
+          { _id: riderData._id },
+          { $set: { work_status: "In Delivery" } }
+        );
+
+        // 5️⃣ Tracking entry
+        await trackingCollection.insertOne({
+          trackingId: parcel.trackingId,
+          status: "Rider Assigned",
+          message: `Rider ${riderData.name} assigned. Parcel is now in transit.`,
+          location: "Warehouse",
+          createdAt: new Date(),
+        });
+
+        res.json({ success: true, message: "Rider assigned successfully" });
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Failed to assign rider" });
+      }
+    });
+
+    
 
     // GET tracking history by trackingId
     app.get('/tracking/:trackingId', async (req, res) => {
