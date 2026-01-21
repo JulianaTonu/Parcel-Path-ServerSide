@@ -439,7 +439,26 @@ async function run() {
       }
     });
 
-    
+    // ======== RIDER PENDING PARCELS ====
+    app.get("/rider/pending-parcels", verifyFBToken, verifyRider,
+      async (req, res) => {
+        const email = req.query.email;
+        console.log('riderEmail', email)
+        console.log('decoded', req.decoded.email)
+        // security check
+        if (req.decoded.email !== email) {
+          return res.status(403).send({ message: "Forbidden access" });
+        }
+
+        const parcels = await parcelsCollection.find({
+          riderEmail: email,
+          delivery_status: "In Transit",
+        }).toArray();
+
+        res.send(parcels);
+      }
+    );
+
 
     // GET tracking history by trackingId
     app.get('/tracking/:trackingId', async (req, res) => {
