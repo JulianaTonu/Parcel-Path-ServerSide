@@ -11,7 +11,7 @@ const stripe = require('stripe')(process.env.PAYMENT_GATEWAY_KEY);
 // ✅ CORS (Express 5 compatible)
 app.use(cors({
   origin: "http://localhost:5173",
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
 
@@ -70,6 +70,26 @@ async function run() {
 
     }
 
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded.email;
+      const user = await usersCollection.findOne({ email });
+
+      if (!user || user.role !== "admin") {
+        return res.status(403).send({ message: "Admin access only" });
+      }
+
+      next();
+    };
+
+    const verifyRider = async (req, res, next) => {
+      const user = await usersCollection.findOne({ email: req.decoded.email });
+      if (!user || user.role !== "rider") {
+        return res.status(403).send({ message: "Rider only" });
+      }
+      next();
+    };
+
+
     // 🔍 Search users by email (partial match)
     app.get("/users/search", async (req, res) => {
       const { q } = req.query;
@@ -108,7 +128,7 @@ async function run() {
 
 
     // Update user role
-    app.patch('/users/role/:id', async (req, res) => {
+    app.patch('/users/role/:id', verifyFBToken, async (req, res) => {
       const { role } = req.body;
 
       if (!['admin', 'user'].includes(role)) {
@@ -187,6 +207,7 @@ async function run() {
         const parcel = {
           ...req.body,
           payment_status: "unpaid",
+          trackingId: `TRK-${Date.now()}`,
           creation_date: new Date(),
         };
 
@@ -195,7 +216,7 @@ async function run() {
         //  AUTO TRACKING CREATE
         const tracking = {
           parcelId: parcelResult.insertedId,
-          trackingId: `TRK-${Date.now()}`,
+          trackingId: parcel.trackingId,
           status: "Parcel Created",
           location: "Warehouse",
           message: "Parcel has been registered",
@@ -284,8 +305,10 @@ async function run() {
       }
     });
 
+    // ======  RIDER  =====
+
     // GET pending riders
-    app.get('/riders',verifyFBToken, async (req, res) => {
+    app.get('/riders', async (req, res) => {
       const status = req.query.status;
       const query = status ? { status } : {};
       const riders = await ridersCollection.find(query).toArray();
@@ -294,14 +317,42 @@ async function run() {
 
     // Update rider status
     app.patch('/riders/:id', async (req, res) => {
-      console.log("PATCH hit", req.params.id, req.body);
       const { status } = req.body;
+      const riderId = req.params.id;
+
+      // 1️⃣ Update rider status
+      const rider = await ridersCollection.findOne({
+        _id: new ObjectId(riderId),
+      });
+
+      if (!rider) {
+        return res.status(404).send({ message: "Rider not found" });
+      }
+
       const result = await ridersCollection.updateOne(
-        { _id: new ObjectId(req.params.id) },
+        { _id: new ObjectId(riderId) },
         { $set: { status } }
       );
+
+      // 2️⃣ IF approved → update user role
+      if (status === "active") {
+        await usersCollection.updateOne(
+          { email: rider.email },
+          { $set: { role: "rider" } }
+        );
+      }
+
+      // 3️⃣ IF rejected → optional rollback
+      if (status === "rejected") {
+        await usersCollection.updateOne(
+          { email: rider.email },
+          { $set: { role: "user" } }
+        );
+      }
+
       res.send(result);
     });
+
 
     //Create Rider 
     app.post('/riders', async (req, res) => {
@@ -326,20 +377,19 @@ async function run() {
     });
 
 
+  
+
     // GET tracking history by trackingId
     app.get('/tracking/:trackingId', async (req, res) => {
       try {
         const { trackingId } = req.params;
 
         const trackingHistory = await trackingCollection
-          .find({ trackingId })
-          .sort({ createdAt: 1 }) // oldest → latest (timeline)
+          .find({ trackingId: trackingId.trim() })
+          .sort({ createdAt: -1 })
           .toArray();
 
-        if (trackingHistory.length === 0) {
-          return res.status(404).send([]);
-        }
-
+        // ✅ even if empty → return 200 + []
         res.send(trackingHistory);
       } catch (error) {
         console.error('Tracking fetch error:', error);
@@ -347,19 +397,9 @@ async function run() {
       }
     });
 
-    // Tracking ID diye parcel pabar jonne:
-    app.get("/parcels/by-tracking/:trackingId", async (req, res) => {
-      const { trackingId } = req.params;
 
-      const tracking = await trackingCollection.findOne({ trackingId });
-      if (!tracking) return res.status(404).send({});
 
-      const parcel = await parcelsCollection.findOne({
-        _id: tracking.parcelId,
-      });
 
-      res.send(parcel);
-    });
 
     app.post('/tracking/update', async (req, res) => {
       try {
@@ -397,7 +437,7 @@ async function run() {
     //>>>>>>>PayMent.<<<<<<<
 
     // GET: payment history (by user or all for admin)
-    app.get("/payments", verifyFBToken, async (req, res) => {
+    app.get("/payments", async (req, res) => {
       try {
         const { email } = req.query;
         console.log('decoded', req.decoded)
