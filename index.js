@@ -641,7 +641,74 @@ async function run() {
       }
     });
 
-  
+    // ====== Earnings Summary ======
+    app.get("/rider/earnings-summary", verifyFBToken, verifyRider,
+      async (req, res) => {
+        try {
+          const email = req.decoded.email;
+
+          const earnings = await riderEarningsCollection
+            .find({ riderEmail: email })
+            .toArray();
+
+          const now = new Date();
+
+          const startOfToday = new Date();
+          startOfToday.setHours(0, 0, 0, 0);
+
+          // Monday start of week
+          const startOfWeek = new Date();
+          const day = startOfWeek.getDay() || 7;
+          startOfWeek.setDate(startOfWeek.getDate() - day + 1);
+          startOfWeek.setHours(0, 0, 0, 0);
+
+          const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+          const startOfYear = new Date(now.getFullYear(), 0, 1);
+
+          const sumAmount = (list) =>
+            list.reduce((sum, e) => sum + e.amount, 0);
+
+          const totalEarning = sumAmount(earnings);
+
+          const cashedOut = sumAmount(
+            earnings.filter(e => e.status === "cashed_out")
+          );
+
+          const pending = totalEarning - cashedOut;
+
+          const today = sumAmount(
+            earnings.filter(e => new Date(e.createdAt) >= startOfToday)
+          );
+
+          const thisWeek = sumAmount(
+            earnings.filter(e => new Date(e.createdAt) >= startOfWeek)
+          );
+
+          const thisMonth = sumAmount(
+            earnings.filter(e => new Date(e.createdAt) >= startOfMonth)
+          );
+
+          const thisYear = sumAmount(
+            earnings.filter(e => new Date(e.createdAt) >= startOfYear)
+          );
+
+          res.send({
+            totalEarning,
+            cashedOut,
+            pending,
+            today,
+            thisWeek,
+            thisMonth,
+            thisYear,
+          });
+        } catch (error) {
+          console.error("Earnings summary error:", error);
+          res.status(500).send({ message: "Failed to fetch earnings summary" });
+        }
+      }
+    );
+
+
 
 
     //=== GET PARCEL BY Tracking ID ===
