@@ -709,6 +709,20 @@ async function run() {
     );
 
 
+    //===My Earnings List API===
+    app.get("/rider/earnings", verifyFBToken, verifyRider,
+      async (req, res) => {
+        const email = req.decoded.email;
+
+        const result = await riderEarningsCollection
+          .find({ riderEmail: email })
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        res.send(result);
+      }
+    );
+
 
 
     //=== GET PARCEL BY Tracking ID ===
