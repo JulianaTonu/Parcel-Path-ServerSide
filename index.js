@@ -540,7 +540,34 @@ async function run() {
       }
     );
 
-  
+    // ======== RIDER COMPLETED DELIVERED (get delivered parcel) ========
+    app.get("/rider/completed-parcels", verifyFBToken, verifyRider,
+      async (req, res) => {
+        try {
+          const email = req.query.email;
+
+          //  security check
+          if (req.decoded.email !== email) {
+            return res.status(403).send({ message: "Forbidden access" });
+          }
+
+          const parcels = await parcelsCollection
+            .find({
+              riderEmail: email,
+              delivery_status: "Delivered",
+            })
+            .sort({ deliveredAt: -1 }) // latest delivered first
+            .toArray();
+
+          res.send(parcels);
+        } catch (error) {
+          console.error(error);
+          res.status(500).send({ message: "Failed to fetch completed deliveries" });
+        }
+      }
+    );
+
+
 
 
     //=== GET PARCEL BY Tracking ID ===
