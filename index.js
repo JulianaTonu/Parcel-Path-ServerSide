@@ -606,8 +606,42 @@ async function run() {
       }
     });
 
-   
+    // ===== Cashout =====
+    app.post("/rider/cashout", verifyFBToken, verifyRider, async (req, res) => {
+      try {
+        const email = req.decoded.email;
 
+        const pendingEarnings = await riderEarningsCollection.find({
+          riderEmail: email,
+          status: "pending"
+        }).toArray();
+
+        if (!pendingEarnings.length) {
+          return res.status(400).send({ message: "No pending earnings" });
+        }
+
+        const total = pendingEarnings.reduce((sum, e) => sum + e.amount, 0);
+
+        const ids = pendingEarnings.map(e => e._id);
+
+        await riderEarningsCollection.updateMany(
+          { _id: { $in: ids } },
+          {
+            $set: {
+              status: "cashed_out",
+              cashedOutAt: new Date(),
+            }
+          }
+        );
+
+        res.send({ success: true, cashedOut: total });
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: "Cashout failed" });
+      }
+    });
+
+  
 
 
     //=== GET PARCEL BY Tracking ID ===
