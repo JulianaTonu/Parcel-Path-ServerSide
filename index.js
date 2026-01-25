@@ -568,6 +568,46 @@ async function run() {
     );
 
 
+    // ===== GET rider profile =====
+    app.get("/rider/profile", verifyFBToken, verifyRider, async (req, res) => {
+      try {
+        const email = req.decoded.email;
+
+        const rider = await ridersCollection.findOne({ email });
+        console.log('rider', rider)
+
+        if (!rider) return res.status(404).send({ message: "Rider not found" });
+
+        const photoURL = await usersCollection.findOne({ email });
+        if (!photoURL) return res.status(404).send({ message: "photoURL not found" });
+
+        const earnings = await riderEarningsCollection
+          .find({ riderEmail: email })
+          .toArray();
+
+        const totalEarning = earnings.reduce((s, e) => s + e.amount, 0);
+        const totalDeliveries = earnings.length;
+
+        res.send({
+          user: {
+            name: rider.name,
+            email: rider.email,
+            phone: rider.contact,
+            district: rider.district,
+            photoURL: photoURL.photoURL,
+            createdAt: rider.created_at,
+          },
+          totalEarning,
+          totalDeliveries,
+        });
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: "Failed to fetch profile" });
+      }
+    });
+
+   
+
 
 
     //=== GET PARCEL BY Tracking ID ===
