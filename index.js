@@ -44,6 +44,7 @@ async function run() {
     const trackingCollection = database.collection("tracking");
     const usersCollection = database.collection("users");
     const ridersCollection = database.collection("riders");
+    const riderEarningsCollection = database.collection("riderEarnings");
 
     //custom middlewares
     const verifyFBToken = async (req, res, next) => {
@@ -459,77 +460,90 @@ async function run() {
       }
     );
 
-   const RIDER_COMMISSION_PERCENT = 20;
-// ===== RIDER DELIVER PARCEL =====
-app.patch("/parcels/:id/deliver",
-  verifyFBToken,
-  verifyRider,
-  async (req, res) => {
-    try {
-      const parcelId = req.params.id;
 
-      const parcel = await parcelsCollection.findOne({
-        _id: new ObjectId(parcelId),
-      });
 
-      if (!parcel) {
-        return res.status(404).send({ message: "Parcel not found" });
+    const RIDER_COMMISSION_PERCENT = 20;
+    // ===== RIDER DELIVER PARCEL =====
+    app.patch("/parcels/:id/deliver", verifyFBToken,
+      verifyRider,
+      async (req, res) => {
+        try {
+          const parcelId = req.params.id;
+
+          const parcel = await parcelsCollection.findOne({
+            _id: new ObjectId(parcelId),
+          });
+
+          if (!parcel) {
+            return res.status(404).send({ message: "Parcel not found" });
+          }
+
+          if (parcel.delivery_status === "Delivered") {
+            return res.status(400).send({ message: "Parcel already delivered" });
+          }
+
+          if (parcel.riderEmail !== req.decoded.email) {
+            return res.status(403).send({ message: "Forbidden access" });
+          }
+
+          // 💰 rider earning
+          const riderEarning = Math.round(
+            (parcel.delivery_cost * RIDER_COMMISSION_PERCENT) / 100
+          );
+
+          const isCOD = parcel.payment_status === "unpaid";
+
+          // 1️⃣ Update parcel
+          await parcelsCollection.updateOne(
+            { _id: new ObjectId(parcelId) },
+            {
+              $set: {
+                delivery_status: "Delivered",
+                deliveredAt: new Date(),
+                riderEarning,
+                payment_status: isCOD ? "paid" : parcel.payment_status,
+              },
+            }
+          );
+
+          // 2️⃣ Insert earning record
+          await riderEarningsCollection.insertOne({
+            riderEmail: parcel.riderEmail,
+            parcelId: parcel.trackingId,
+            totalCost: parcel.delivery_cost,
+            amount: riderEarning,
+            type: isCOD ? "COD" : "ONLINE",
+            status: isCOD ? "cashed_out" : "pending",
+            createdAt: new Date(),
+          });
+
+          // 3️⃣ Tracking
+          await trackingCollection.insertOne({
+            trackingId: parcel.trackingId,
+            status: "Delivered",
+            message: isCOD
+              ? "Parcel delivered & cash collected"
+              : "Parcel delivered successfully",
+            location: parcel.receiver_district || "Destination",
+            createdAt: new Date(),
+          });
+
+          res.send({
+            success: true,
+            riderEarning,
+            cashed_out: isCOD ? riderEarning : 0,
+          });
+        } catch (error) {
+          console.error(error);
+          res.status(500).send({ message: "Delivery update failed" });
+        }
       }
+    );
 
-      // ❌ prevent double delivery
-      if (parcel.delivery_status === "Delivered") {
-        return res.status(400).send({ message: "Parcel already delivered" });
-      }
-
-      if (parcel.riderEmail !== req.decoded.email) {
-        return res.status(403).send({ message: "Forbidden access" });
-      }
-
-      // ✅ calculate earning AFTER parcel exists
-      const riderEarning = Math.round(
-        (parcel.delivery_cost * RIDER_COMMISSION_PERCENT) / 100
-      );
-
-      const updateDoc = {
-        delivery_status: "Delivered",
-        deliveredAt: new Date(),
-        riderEarning,
-      };
-
-      // COD → collect payment
-      if (parcel.payment_status === "unpaid") {
-        updateDoc.payment_status = "paid";
-      }
-
-      await parcelsCollection.updateOne(
-        { _id: new ObjectId(parcelId) },
-        { $set: updateDoc }
-      );
-
-      // ✅ Delivered tracking ONLY here
-      await trackingCollection.insertOne({
-        trackingId: parcel.trackingId,
-        status: "Delivered",
-        message:
-          parcel.payment_status === "unpaid"
-            ? "Parcel delivered and payment collected"
-            : "Parcel delivered successfully",
-        location: parcel.receiver_district || "Destination",
-        createdAt: new Date(),
-      });
-
-      res.send({ success: true, riderEarning });
-    } catch (error) {
-      console.error(error);
-      res.status(500).send({ message: "Delivery update failed" });
-    }
-  }
-);
-
+  
 
 
     //=== GET PARCEL BY Tracking ID ===
-
     app.get("/parcels/by-tracking/:trackingId", async (req, res) => {
       try {
         const trackingId = req.params.trackingId.trim();
@@ -567,32 +581,6 @@ app.patch("/parcels/:id/deliver",
     });
 
 
-// ======== RIDER COMPLETED DELIVERED (get delivered parcel) ========
-app.get("/rider/completed-parcels",verifyFBToken,verifyRider,
-  async (req, res) => {
-    try {
-      const email = req.query.email;
-
-      //  security check
-      if (req.decoded.email !== email) {
-        return res.status(403).send({ message: "Forbidden access" });
-      }
-
-      const parcels = await parcelsCollection
-        .find({
-          riderEmail: email,
-          delivery_status: "Delivered",
-        })
-        .sort({ deliveredAt: -1 }) // latest delivered first
-        .toArray();
-
-      res.send(parcels);
-    } catch (error) {
-      console.error(error);
-      res.status(500).send({ message: "Failed to fetch completed deliveries" });
-    }
-  }
-);
 
 
 
@@ -632,7 +620,7 @@ app.get("/rider/completed-parcels",verifyFBToken,verifyRider,
     //>>>>>>>PayMent.<<<<<<<
 
     // GET: payment history (by user or all for admin)
-    app.get("/payments",verifyFBToken, async (req, res) => {
+    app.get("/payments", verifyFBToken, async (req, res) => {
       try {
         const { email } = req.query;
         console.log('decoded', req.decoded.email)
@@ -651,7 +639,7 @@ app.get("/rider/completed-parcels",verifyFBToken,verifyRider,
           .find(query)
           .sort({ createdAt: -1 }) // ✅ latest first
           .toArray();
-console.log('payments',payments)
+        console.log('payments', payments)
         res.send(payments);
       } catch (error) {
         console.error("Error fetching payments:", error);
@@ -661,59 +649,59 @@ console.log('payments',payments)
 
 
     // ========= PAYMENT =========
-app.post("/payments", async (req, res) => {
-  try {
-    const { parcelId, email, amount, transactionId } = req.body;
+    app.post("/payments", async (req, res) => {
+      try {
+        const { parcelId, email, amount, transactionId } = req.body;
 
-    // 1️⃣ Find parcel (optional but recommended)
-    const parcel = await parcelsCollection.findOne({
-      _id: new ObjectId(parcelId),
-    });
+        // 1️⃣ Find parcel (optional but recommended)
+        const parcel = await parcelsCollection.findOne({
+          _id: new ObjectId(parcelId),
+        });
 
-    if (!parcel) {
-      return res.status(404).send({ message: "Parcel not found" });
-    }
+        if (!parcel) {
+          return res.status(404).send({ message: "Parcel not found" });
+        }
 
-    // 2️⃣ Save payment history
-    const payment = {
-      parcelId: new ObjectId(parcelId),
-      email,
-      amount,
-      transactionId,
-      status: "succeeded",
-      createdAt: new Date(),
-    };
+        // 2️⃣ Save payment history
+        const payment = {
+          parcelId: new ObjectId(parcelId),
+          email,
+          amount,
+          transactionId,
+          status: "succeeded",
+          createdAt: new Date(),
+        };
 
-    const paymentResult = await paymentsCollection.insertOne(payment);
+        const paymentResult = await paymentsCollection.insertOne(payment);
 
-    // 3️⃣ Mark parcel as PAID (❗ delivery status untouched)
-    await parcelsCollection.updateOne(
-      { _id: new ObjectId(parcelId) },
-      {
-        $set: {
-          payment_status: "paid",
-        },
+        // 3️⃣ Mark parcel as PAID (❗ delivery status untouched)
+        await parcelsCollection.updateOne(
+          { _id: new ObjectId(parcelId) },
+          {
+            $set: {
+              payment_status: "paid",
+            },
+          }
+        );
+
+        // 4️⃣ Tracking entry ONLY for payment
+        await trackingCollection.insertOne({
+          trackingId: parcel.trackingId,
+          status: "Payment Received",
+          message: "Payment completed successfully",
+          location: "Online Payment",
+          createdAt: new Date(),
+        });
+
+        res.send({
+          success: true,
+          paymentId: paymentResult.insertedId,
+        });
+      } catch (error) {
+        console.error("Payment error:", error);
+        res.status(500).send({ message: "Payment save failed" });
       }
-    );
-
-    // 4️⃣ Tracking entry ONLY for payment
-    await trackingCollection.insertOne({
-      trackingId: parcel.trackingId,
-      status: "Payment Received",
-      message: "Payment completed successfully",
-      location: "Online Payment",
-      createdAt: new Date(),
     });
-
-    res.send({
-      success: true,
-      paymentId: paymentResult.insertedId,
-    });
-  } catch (error) {
-    console.error("Payment error:", error);
-    res.status(500).send({ message: "Payment save failed" });
-  }
-});
 
 
 
