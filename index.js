@@ -91,6 +91,19 @@ async function run() {
     };
 
 
+    // Get users count by role (user / rider / admin)
+    app.get("/users/count/:role", async (req, res) => {
+      const role = req.params.role;
+
+      if (!role) {
+        return res.status(400).send({ message: "Role is required" });
+      }
+
+      const count = await usersCollection.countDocuments({ role });
+      res.send({ role, total: count });
+    });
+
+
     // 🔍 Search users by email (partial match)
     app.get("/users/search", async (req, res) => {
       const { q } = req.query;
@@ -144,6 +157,61 @@ async function run() {
       res.send(result);
     });
 
+    // Get user profile for dashboard
+    app.get("/users/profile/:email", verifyFBToken, async (req, res) => {
+      const email = req.params.email;
+
+      if (!email) {
+        return res.status(400).send({ message: "Email is required" });
+      }
+
+      const user = await usersCollection.findOne(
+        { email },
+        {
+          projection: {
+            name: 1,
+            email: 1,
+            photoURL: 1,
+            phone: 1,
+            role: 1,
+            createdAt: 1,
+          },
+        }
+      );
+
+      if (!user) {
+        return res.status(404).send({ message: "User not found" });
+      }
+
+      res.send(user);
+    });
+    // Update user profile (name, contact, photoURL)
+    app.patch("/users/profile/:email", verifyFBToken, async (req, res) => {
+      const email = req.params.email;
+      const { name, contact, photoURL } = req.body;
+
+      if (!name && !contact && !photoURL) {
+        return res.status(400).send({ message: "Nothing to update" });
+      }
+
+      const updateDoc = {
+        $set: {
+          ...(name && { name }),
+          ...(contact && { contact }),
+          ...(photoURL && { photoURL }),
+        },
+      };
+
+      const result = await usersCollection.updateOne(
+        { email },
+        updateDoc
+      );
+
+      res.send({
+        success: result.modifiedCount > 0,
+        message: "Profile updated successfully",
+      });
+    });
 
     app.post("/users", async (req, res) => {
       try {
