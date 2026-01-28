@@ -637,42 +637,45 @@ async function run() {
 
 
     // ===== GET rider profile =====
-    app.get("/rider/profile", verifyFBToken, verifyRider, async (req, res) => {
-      try {
-        const email = req.decoded.email;
+    // ===== GET rider profile =====
+app.get("/rider/profile", verifyFBToken, verifyRider, async (req, res) => {
+  try {
+    const email = req.decoded.email;
 
-        const rider = await ridersCollection.findOne({ email });
-        console.log('rider', rider)
+    const rider = await ridersCollection.findOne({ email });
+    if (!rider) return res.status(404).send({ message: "Rider not found" });
 
-        if (!rider) return res.status(404).send({ message: "Rider not found" });
+    const user = await usersCollection.findOne({ email });
 
-        const photoURL = await usersCollection.findOne({ email });
-        if (!photoURL) return res.status(404).send({ message: "photoURL not found" });
+    const earnings = await riderEarningsCollection
+      .find({ riderEmail: email })
+      .toArray();
 
-        const earnings = await riderEarningsCollection
-          .find({ riderEmail: email })
-          .toArray();
+    const totalEarning = earnings.reduce((s, e) => s + e.amount, 0);
 
-        const totalEarning = earnings.reduce((s, e) => s + e.amount, 0);
-        const totalDeliveries = earnings.length;
-
-        res.send({
-          user: {
-            name: rider.name,
-            email: rider.email,
-            phone: rider.contact,
-            district: rider.district,
-            photoURL: photoURL.photoURL,
-            createdAt: rider.created_at,
-          },
-          totalEarning,
-          totalDeliveries,
-        });
-      } catch (err) {
-        console.error(err);
-        res.status(500).send({ message: "Failed to fetch profile" });
-      }
+    // ✅ CORRECT DELIVERY COUNT
+    const totalDeliveries = await parcelsCollection.countDocuments({
+      riderEmail: email,
+      delivery_status: "Delivered",
     });
+
+    res.send({
+      user: {
+        name: rider.name,
+        email: rider.email,
+        phone: rider.contact,
+        district: rider.district,
+        photoURL: user?.photoURL,
+        createdAt: rider.created_at,
+      },
+      totalEarning,
+      totalDeliveries,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ message: "Failed to fetch profile" });
+  }
+});
 
     // ===== Cashout =====
     app.post("/rider/cashout", verifyFBToken, verifyRider, async (req, res) => {
@@ -952,6 +955,102 @@ async function run() {
         res.status(500).send({ message: "Payment save failed" });
       }
     });
+
+
+
+    // Rider delivery statistics (area wise)
+app.get("/rider/stats/areas", verifyFBToken, verifyRider, async (req, res) => {
+  const riderEmail = req.decoded.email;
+
+  const result = await parcelsCollection.aggregate([
+    {
+      $match: {
+        riderEmail,
+        delivery_status: "Delivered",
+      },
+    },
+    {
+      $group: {
+        _id: "$receiver_service_area",
+        total: { $sum: 1 },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        area: "$_id",
+        value: "$total",
+      },
+    },
+  ]).toArray();
+
+  res.send(result);
+});
+
+// Get parcel count by delivery_status
+app.get("/parcels/count/:status", async (req, res) => {
+  let status = req.params.status.replace("-", " "); // URL-safe
+  const total = await parcelsCollection.countDocuments({ delivery_status: status });
+  res.send({ status, total });
+});
+
+// ===== REVENUE =====
+
+// Total revenue from paid parcels
+app.get("/revenue", async (req, res) => {
+  const result = await parcelsCollection.aggregate([
+    { $match: { payment_status: "paid" } },
+    { $group: { _id: null, totalRevenue: { $sum: "$delivery_cost" } } },
+  ]).toArray();
+
+  res.send({ totalRevenue: result[0]?.totalRevenue || 0 });
+});
+
+
+app.get(
+  "/rider/stats/deliveries",
+  verifyFBToken,
+  verifyRider,
+  async (req, res) => {
+    try {
+      const riderEmail = req.decoded.email;
+
+      const result = await parcelsCollection.aggregate([
+        {
+          $match: {
+            riderEmail: riderEmail,
+            delivery_status: "Delivered"  || "In Transit",
+            deliveredAt: { $exists: true }
+          }
+        },
+        {
+          $group: {
+            _id: {
+              $dateToString: {
+                format: "%b %d",
+                date: "$deliveredAt"
+              }
+            },
+            deliveries: { $sum: 1 }
+          }
+        },
+        { $sort: { "_id": 1 } },
+        {
+          $project: {
+            _id: 0,
+            date: "$_id",
+            deliveries: 1
+          }
+        }
+      ]).toArray();
+
+      res.send(result);
+    } catch (error) {
+      console.error(error);
+      res.status(500).send({ message: "Failed to load delivery stats" });
+    }
+  }
+);
 
 
 
