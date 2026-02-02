@@ -10,7 +10,11 @@ const stripe = require('stripe')(process.env.PAYMENT_GATEWAY_KEY);
 
 // ✅ CORS (Express 5 compatible)
 app.use(cors({
-  origin: "http://localhost:5173",
+    origin: [
+    "http://localhost:5173",          // dev
+    "https://parcel-path-c52cb.web.app",  // Firebase hosting URL
+    "https://parcel-path-c52cb.firebaseapp.com" // optional
+  ],
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
