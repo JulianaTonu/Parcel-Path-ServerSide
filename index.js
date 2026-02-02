@@ -14,9 +14,12 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
-
 app.use(express.json());
-const serviceAccount = require("./firebase-admin-key.json");
+
+const decodedkEY = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf8')
+const serviceAccount = JSON.parse(decodedkEY);
+
+
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
@@ -35,7 +38,7 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
     console.log("✅ MongoDB Connected");
 
     const database = client.db(process.env.DB_NAME);
